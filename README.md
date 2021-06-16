@@ -263,7 +263,7 @@ BUILD SUCCESSFUL in 34s
 
 不能满足需求的请自行修改适配,如果对你有帮助欢迎star:star:,你的支持是我的动力,谢谢. :heart_eyes:
 
-项目链接:[https://github.com/longforus/studyNotes](https://github.com/longforus/studyNotes)
+项目链接:[https://github.com/longforus/OneKeyReinforceAndPatch](https://github.com/longforus/OneKeyReinforceAndPatch)
 
 
 
