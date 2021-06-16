@@ -1,0 +1,200 @@
+import java.util.regex.Pattern
+
+/**
+ * 一键实现打release包 -> 360加固 -> 存档,并在后期一键实现针对某一版本生成Sophix补丁的gradle脚本
+ * */
+
+Properties properties = new Properties()
+properties.load(new InputStreamReader(new FileInputStream(new File(rootDir, "local.properties")), "GBK"))
+ext.sdkPath = properties.getProperty("sdk.dir")
+ext.JiaguJarPath = properties.getProperty("jiagu.dir")
+ext.versionCode = project.getProperties().get("versionCode")
+def releaseApkBackupDir = properties.getProperty("releaseApkBackupDir")
+if (releaseApkBackupDir==null||releaseApkBackupDir.isEmpty()) {
+    throw RuntimeException("mast set releaseApkBackupDir in local.properties")
+}
+ext.apkBakupPath = file("${releaseApkBackupDir}/${versionCode}/")
+
+def execute360JiaguCmd(cmd, isPrint = false) {
+    println cmd
+    def p = Runtime.getRuntime().exec(cmd, null, new File(new File("$JiaguJarPath").parentFile.absolutePath, "java/bin/"))
+    def br = new BufferedReader(new InputStreamReader(p.getInputStream(),"GBK"))
+    def line
+    while ((line = br.readLine()) != null) {
+        if (isPrint) System.err.println(line)
+    }
+    if (p.waitFor() != 0) {
+        br = new BufferedReader(new InputStreamReader(p.getErr(),"GBK"))
+        while ((line = br.readLine()) != null) {
+            System.err.println(line)
+        }
+        throw new Exception("执行加固命令：" + cmd + ";失败")
+    }
+}
+
+static def executeCmd(String cmd) {
+    println "$cmd"
+    def p = Runtime.getRuntime().exec(cmd, null)
+    def br = new BufferedReader(new InputStreamReader(p.getInputStream(),"GBK"))
+    def line
+    while ((line = br.readLine()) != null) {
+        System.err.println(line)
+    }
+    if (p.waitFor() != 0) {
+        br = new BufferedReader(new InputStreamReader(p.getErr(),"GBK"))
+        while ((line = br.readLine()) != null) {
+            System.err.println(line)
+        }
+        throw new Exception("执行命令：" + cmd + ";失败")
+    }
+}
+
+def jiagu360(appFilePath) {
+    println "开始360加固"
+    println "待加固APK路径=" + appFilePath.getAbsolutePath()
+    println "sdkPath = " + sdkPath
+    println "JiaguJarPath = " + JiaguJarPath
+    println "apkBakupPath = " + apkBakupPath
+    if (!appFilePath.exists()) {
+        throw new FileNotFoundException("没有找到APK文件！")
+    }
+    def cmdBase = 'java -jar ' + JiaguJarPath
+    def cmdJiagu = cmdBase + ' -jiagu ' + appFilePath.getAbsolutePath() + ' ' + appFilePath.getParentFile().getAbsolutePath()
+    /*+ ' -autosign'*/ //因为我的项目不需要自动签名所以这里没有添加
+    execute360JiaguCmd(cmdBase + " -update", true)
+    execute360JiaguCmd(cmdBase + " -config -x86", true)
+    execute360JiaguCmd(cmdJiagu, true)
+
+    def baseApkPath = "${appFilePath.getAbsolutePath().substring(0, appFilePath.getAbsolutePath().length() - 4)}_${versionCode.toString().substring(0,3)}"
+
+    println baseApkPath
+    def jiaguApkPath = baseApkPath + '_jiagu.apk'
+    def alignApkPath = baseApkPath + '_jiagu_align.apk'
+    def signApkPath = "${appFilePath.getParentFile().absolutePath}/${versionCode}.apk"
+
+    println "开始对齐"
+    def zipPath = "${sdkPath}\\build-tools\\30.0.3\\zipalign.exe"
+    executeCmd("$zipPath -v -p 4 $jiaguApkPath $alignApkPath")
+
+    println "开始签名"
+    def signerPath = "${sdkPath}\\build-tools\\30.0.3\\apksigner.bat"
+
+    executeCmd(
+        " $signerPath sign --ks $rootDir/test.jks --ks-pass pass:123456 --v1-signing-enabled --v2-signing-enabled --ks-key-alias " +
+            "key0 --pass-encoding ibm437 --in $alignApkPath --out $signApkPath ")
+
+
+    new File(jiaguApkPath).delete()
+    new File(alignApkPath).delete()
+    println "加固结束"
+    def dir = new File("${apkBakupPath}\\")
+    copy {
+        from(appFilePath.getParentFile())
+        into(dir)
+        include('*.apk')
+        println "备份apk到:${dir}"
+    }
+    copy {
+        from("${buildDir}\\outputs\\mapping\\release\\")
+        into(dir)
+        include('mapping.txt')
+        println "备份mapping.txt到:${dir}"
+    }
+    Runtime.getRuntime().exec("cmd /C start " + dir.getAbsolutePath())
+    println "全部结束"
+}
+if (gradle.startParameter.taskNames.toString().toUpperCase().contains('ASSEMBLE')) {
+    afterEvaluate({
+        project.tasks.findAll {
+            if (it.name.startsWith("assemble") && it.name.endsWith("Release")) {
+                it.doLast {
+                    android.applicationVariants.all { variant ->
+                        if (variant.buildType.name == "release") {
+                            //                        since android tools 4.+ above
+                            def folder = variant.getPackageApplicationProvider().get().outputDirectory.asFile.get()
+                            //                        def folder = variant.getPackageApplicationProvider().get().outputDirectory
+                            println(folder)
+                            variant.outputs.each { out ->
+                                def outputFile = out.outputFile
+                                if (outputFile != null && outputFile.name.endsWith('.apk')) {
+                                    def file = new File(folder, outputFile.name)
+                                    def signApk = new File(folder,"${versionCode}.apk")
+                                    if (signApk.exists()){
+                                        println signApk.getName() + "已存在,退出加固"
+                                        return
+                                    }
+                                    if (file.exists()) {
+                                        jiagu360(file)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    })
+}
+
+task testJiaguWin(){
+    doFirst {
+        jiagu360(new File("C:\\Users\\void\\StudioProjects\\xxx\\releaseApk\\5701\\app-phone-person-release.apk"))
+    }
+}
+
+
+//需要补的版本
+def oldVersion = "5702"
+def patchToolDir =properties.getProperty("patchTool.dir").toString()
+def taskName = gradle.startParameter.taskNames
+println "taskName   "  +taskName
+tasks.addRule("Pattern: buildSophixPatch<Flavor> – buildSophixPatch.构建补丁") {String tn->
+    if (tn.startsWith('buildSophixPatch')) {//如果输入的taskName符合这个规则
+        copy {
+            from("${releaseApkBackupDir}/${oldVersion}/")
+            into(project.projectDir)
+            include('mapping.txt')
+            println "复制 mapping.txt from ${releaseApkBackupDir}/${oldVersion} to ${project.projectDir}"
+        }
+        task(tn,dependsOn: "assembleRelease"){
+            //动态插入一个doLast方法
+            doLast{
+                println "buildDir = $buildDir"
+                String releaseApkBackupDirPath = winPath2wslPath(releaseApkBackupDir)
+                String profile = """
+ {
+     "AesKey": "",
+     "ClassFilterFilePath": "",
+     "KeyAlias": "key0",
+     "KeyPassword": "123456",
+     "KeyStorePassword": "123456",
+     "KeyStorePath": "${winPath2wslPath(rootProject.rootDir.absolutePath)}/test.jks",
+     "NewApkPath":"${winPath2wslPath(buildDir.absolutePath)}/outputs/apk/release/app-release.apk",
+     "OldApkPath": "${releaseApkBackupDirPath}/${oldVersion}/app-release.apk",
+     "OutputDirPath": "${releaseApkBackupDirPath}/${oldVersion}",
+     "isForceColdFix": false,
+     "isIgnoreRes": true,
+     "isIgnoreSo": false
+ }
+ """
+
+                println profile
+                file("${patchToolDir}/profiles.json").write(profile)
+//                executeCmd("cmd /c ${patchToolDir}/SophixPatchTool.exe --profiles profiles.json")
+                String patchToolDirWsl = winPath2wslPath(patchToolDir)
+                executeCmd("cmd /c wsl ${patchToolDirWsl}/SophixPatchTool --profiles ${patchToolDirWsl}/profiles.json")
+                Runtime.getRuntime().exec("cmd /C start " +"${releaseApkBackupDirPath}/${oldVersion}")
+            }
+        }
+    }
+}
+
+static String winPath2wslPath(String path){
+    path = path.replace("\\","/")
+    Pattern pattern = Pattern.compile("([C-Ec-e]):")
+    def matcher = pattern.matcher(path)
+    if (matcher.find()){
+        return path.replace(matcher.group(0),"/mnt/${matcher.group(1).toLowerCase()}")
+    }
+    return path
+}
