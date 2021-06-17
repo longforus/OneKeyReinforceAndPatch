@@ -104,6 +104,7 @@ def jiagu360(appFilePath) {
     println "全部结束"
 }
 if (gradle.startParameter.taskNames.toString().toUpperCase().contains('ASSEMBLE')) {
+    switchProguardMappingConfigure(true)
     afterEvaluate({
         project.tasks.findAll {
             if (it.name.startsWith("assemble") && it.name.endsWith("Release")) {
@@ -142,6 +143,23 @@ task testJiaguWin(){
     }
 }
 
+void switchProguardMappingConfigure(boolean isAssemble) {
+    def printMapping = """
+#基线包使用，生成mapping.txt
+#生成的mapping.txt在app/build/outputs/mapping/release路径下，移动到/app路径下
+-printmapping mapping.txt
+"""
+    def applyMapping = """
+#修复后的项目使用，保证混淆结果一致
+-applymapping mapping.txt
+"""
+    if (isAssemble) {
+        file("proguard-rules-append.pro").write(printMapping)
+    } else {
+        file("proguard-rules-append.pro").write(applyMapping)
+    }
+}
+
 
 //需要补的版本
 def oldVersion = "5702"
@@ -150,6 +168,7 @@ def taskName = gradle.startParameter.taskNames
 println "taskName   "  +taskName
 tasks.addRule("Pattern: buildSophixPatch<Flavor> – buildSophixPatch.构建补丁") {String tn->
     if (tn.startsWith('buildSophixPatch')) {//如果输入的taskName符合这个规则
+        switchProguardMappingConfigure(false)
         copy {
             from("${releaseApkBackupDir}/${oldVersion}/")
             into(project.projectDir)
