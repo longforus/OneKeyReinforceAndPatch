@@ -229,7 +229,19 @@ BUILD SUCCESSFUL in 34s
     patchTool.dir=D\:\\SophixPatchToolLinux-3.2.5
     ```
 
-3. 在`jiaguAndPatch.gradle`文件中,制定要修复的版本号:
+3. app的`build.gradle`中混淆配置`'proguard-rules-append.pro'`:
+
+    ```groovy
+    release {
+        minifyEnabled true
+        proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro','proguard-rules-append.pro'
+        signingConfig signingConfigs.config
+    }
+    ```
+
+    这个用于自动处理mapping.txt文件配置,保证打补丁的混淆和基线包一致.`proguard-rules-append.pro`可以是空文件.
+
+4. 在`jiaguAndPatch.gradle`文件中,制定要修复的版本号:
 
     ```groovy
     ......
@@ -242,7 +254,7 @@ BUILD SUCCESSFUL in 34s
 
     注意这个版本需要是按照脚本的规则存档到对应的目录的.这样才能自动读取到基线包和mapping文件.
 
-4. 在`jiaguAndPatch.gradle`中配置自己的签名相关信息,jks文件默认放在项目根目录.
+5. 在`jiaguAndPatch.gradle`中配置自己的签名相关信息,jks文件默认放在项目根目录.
 
     ```json
     {
@@ -255,7 +267,7 @@ BUILD SUCCESSFUL in 34s
 
     
 
-5. 运行`:app:buildSophixPatch`就OK了,完成后会自动打开存档文件夹.`sophix-patch.jar`就是我们要的补丁了.
+6. 运行`:app:buildSophixPatch`就OK了,完成后会自动打开存档文件夹.`sophix-patch.jar`就是我们要的补丁了.
 
 
 
