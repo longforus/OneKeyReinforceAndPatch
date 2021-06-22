@@ -9,9 +9,9 @@ properties.load(new InputStreamReader(new FileInputStream(new File(rootDir, "loc
 ext.sdkPath = properties.getProperty("sdk.dir")
 ext.JiaguJarPath = properties.getProperty("jiagu.dir")
 ext.versionCode = project.getProperties().get("versionCode")
-def releaseApkBackupDir = properties.getProperty("releaseApkBackupDir")
-if (releaseApkBackupDir==null||releaseApkBackupDir.isEmpty()) {
-    throw RuntimeException("mast set releaseApkBackupDir in local.properties")
+def releaseApkBackupDir = properties.getProperty("releaseApkBackupDir","")
+if (releaseApkBackupDir.isEmpty()) {
+    throw RuntimeException("must set releaseApkBackupDir in local.properties")
 }
 ext.apkBakupPath = file("${releaseApkBackupDir}/${versionCode}/")
 
